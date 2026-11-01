@@ -56,5 +56,6 @@ in
     fat-princess     = import ./projects/fat-princess { inherit pkgs lib tools; };
     rac2             = import ./projects/rac2 { inherit pkgs lib tools; };
     pktlib           = import ./projects/pktlib { inherit pkgs lib tools; };
+    banken           = import ./projects/banken { inherit pkgs lib tools; };
   };
 }
