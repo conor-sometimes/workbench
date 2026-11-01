@@ -22,7 +22,9 @@ lib.mkDevEnv {
     # defaults CGO on and dies with "gcc not found" in a toolchain that ships no C compiler. Pinning
     # it here is both the fix and the truth: the dev build matches the shipped build.
     CGO_ENABLED = "0";
-    # go_1_27 already matches go.mod's `go 1.27.3`, so never reach out for a different toolchain.
+    # go_1_26 matches go.mod's `go 1.26.10`, so never reach out for a different toolchain. banken
+    # rides the previous Go on purpose: golangci-lint and gosec track it, so the gate runs clean
+    # (go 1.27 export data is unreadable to them -- "export data version 5 > max 2").
     GOTOOLCHAIN = "local";
   };
 }

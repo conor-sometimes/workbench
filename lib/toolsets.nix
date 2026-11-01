@@ -30,18 +30,20 @@
 
   go = {
     packages = p: with p; [
-      go_1_27
+      go_1_26 # golangci-lint/gosec track the previous Go; banken rides this so the gate runs clean
       gofumpt
       golangci-lint
       gosec
       govulncheck
       errcheck
       go-tools # ships the `staticcheck` binary
+      gotestsum # `just test` renders the suite through it
       delve # dlv
     ];
     egress = [
       "proxy.golang.org" # Go module proxy
       "sum.golang.org" # the checksum database
+      "vuln.go.dev" # govulncheck's vulnerability database (`just vulncheck`)
     ];
   };
 
