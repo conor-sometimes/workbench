@@ -57,5 +57,6 @@ in
     rac2             = import ./projects/rac2 { inherit pkgs lib tools; };
     pktlib           = import ./projects/pktlib { inherit pkgs lib tools; };
     banken           = import ./projects/banken { inherit pkgs lib tools; };
+    banken-sensor    = import ./projects/banken-sensor { inherit pkgs lib tools; };
   };
 }
