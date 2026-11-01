@@ -15,14 +15,19 @@
 
 {
   name,
-  packages ? (_: [ ]),   # the toolchain (a function of nixpkgs)
-  egress ? [ ],           # domains this env needs to fetch deps; consumed by the host's containment config
+  toolsets ? [ ],         # reusable language bundles (lib/toolsets.nix): each { packages; egress }
+  packages ? (_: [ ]),   # project-specific tools on top of the toolsets
+  egress ? [ ],           # project-specific domains on top of the toolsets'
   env ? { },              # extra environment (NAME = "value")
   profile ? "",           # extra shell setup sourced on entry
 }:
 
 let
-  tools = packages pkgs;
+  # Compose the toolsets with the project's own extras: tools are unioned onto PATH, and the egress
+  # domains are unioned into one list the host's containment config reads. "This project is Go" is
+  # then one line (toolsets = [ ts.go ]) and the tools + the wall it needs arrive together.
+  tools = pkgs.lib.concatMap (ts: ts.packages pkgs) toolsets ++ packages pkgs;
+  egressDomains = pkgs.lib.unique (pkgs.lib.concatMap (ts: ts.egress) toolsets ++ egress);
   envLines = pkgs.lib.concatStringsSep "\n"
     (pkgs.lib.mapAttrsToList (k: v: "export ${k}=${pkgs.lib.escapeShellArg v}") env);
 
@@ -46,9 +51,11 @@ let
     shellHook = envLines + "\n" + profile;
   };
 in
-# the common project shape (as mkDecompEnv / mkToolbox), plus `egress` for the host config to read.
+# the common project shape (as mkDecompEnv / mkToolbox), plus the composed `egress` list for the
+# host config to read.
 {
-  inherit name run shell egress;
+  inherit name run shell;
+  egress = egressDomains;
   image = null;
   runtime = "devenv";
 }

@@ -12,24 +12,10 @@
 
 lib.mkDevEnv {
   name = "banken";
+  toolsets = [ lib.toolsets.go ]; # the Go toolchain + its egress, in one line
+  # banken-specific extras on top of the Go core:
   packages = p: with p; [
-    go_1_27
-    gofumpt
-    golangci-lint
-    gosec
-    govulncheck
-    errcheck
-    go-tools # ships the `staticcheck` binary
-    delve # dlv
     cyclonedx-gomod # just sbom
     hyperfine # just bench
-    just
-    git
-  ];
-  egress = [
-    "proxy.golang.org" # Go module proxy
-    "sum.golang.org" # the checksum database
-    "github.com" # dependencies fetched from source, and gh
-    "githubusercontent.com" # raw + release assets
   ];
 }

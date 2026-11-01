@@ -15,22 +15,7 @@
 
 lib.mkDevEnv {
   name = "banken-sensor";
-  packages = p: with p; [
-    rustup # nightly + rust-src + the bpfel target, fetched on first use
-    bpf-linker # links the BPF bytecode (aya's kernel-side output)
-    cargo-deny # supply-chain gate (few deps, audited -- security software)
-    pkg-config
-    just
-    git
-  ];
-  egress = [
-    "static.rust-lang.org" # the Rust toolchain components (nightly)
-    "crates.io"
-    "static.crates.io" # crate tarballs
-    "index.crates.io" # the sparse registry index
-    "github.com" # aya + any git deps
-    "githubusercontent.com"
-  ];
+  toolsets = [ lib.toolsets.rust ]; # the Rust/aya toolchain + its egress, in one line
   # rustup/cargo write under the account's HOME by default (~/.rustup, ~/.cargo), which is writable.
   profile = ''
     echo "banken-sensor: first run -> rustup toolchain install nightly --component rust-src" >&2
