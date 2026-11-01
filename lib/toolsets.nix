@@ -48,7 +48,7 @@
   rust = {
     packages = p: with p; [
       rustup # nightly + rust-src + the bpf target, fetched on first use
-      bpf-linker # links aya's BPF bytecode
+      (import ../pkgs/bpf-linker { inherit pkgs; }) # bpf-linker 0.12 vs LLVM 23 (nixpkgs' lags at 0.9.15); nix-built, RPATH set
       cargo-deny # supply-chain gate (security software)
       gcc # the userspace linker (rustc drives `cc` to link; the BPF side uses bpf-linker)
       pkg-config

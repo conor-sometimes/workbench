@@ -17,4 +17,12 @@ lib.mkDevEnv {
   packages = p: with p; [
     cyclonedx-gomod # just sbom
   ];
+  env = {
+    # banken is CGO-free by design (its release build and the module set this); without it `go test`
+    # defaults CGO on and dies with "gcc not found" in a toolchain that ships no C compiler. Pinning
+    # it here is both the fix and the truth: the dev build matches the shipped build.
+    CGO_ENABLED = "0";
+    # go_1_27 already matches go.mod's `go 1.27.3`, so never reach out for a different toolchain.
+    GOTOOLCHAIN = "local";
+  };
 }

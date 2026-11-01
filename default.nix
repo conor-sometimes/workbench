@@ -17,6 +17,7 @@ in
 let
   tools = {
     objdiff = import ./pkgs/objdiff { inherit pkgs; };
+    bpf-linker = import ./pkgs/bpf-linker { inherit pkgs; };   # for mimi's rust toolset (LLVM 23)
     binutils-mips-ps2 = import ./pkgs/binutils-mips-ps2 { inherit pkgs; };
     rename-field = import ./pkgs/rename-field { inherit pkgs; };
     ccc = import ./pkgs/ccc { inherit pkgs; };
@@ -44,7 +45,7 @@ let
 in
 {
   inherit lib;
-  inherit (tools) objdiff binutils-mips-ps2 rename-field ccc ghidra decomp-guard rank-functions perm-lines progress-readme lane-merge decomp-where split-units sjis-strings compiler-sweep old-gcc ee-gcc maspsx asm-differ binutils-mipsel decomp-permuter pspdecrypt psp-compilers binutils-allegrex;
+  inherit (tools) objdiff bpf-linker binutils-mips-ps2 rename-field ccc ghidra decomp-guard rank-functions perm-lines progress-readme lane-merge decomp-where split-units sjis-strings compiler-sweep old-gcc ee-gcc maspsx asm-differ binutils-mipsel decomp-permuter pspdecrypt psp-compilers binutils-allegrex;
   # Every project environment, one shape and one place — decomp, Python, Rust, whatever. Each
   # returns { name; run; shell; image; runtime } from a runtime builder (lib/mkDecompEnv.nix for
   # "fhs" decomp envs, lib/mkToolbox.nix for on-demand "container" toolboxes). Add one: a dir under
