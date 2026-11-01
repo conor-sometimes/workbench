@@ -12,10 +12,9 @@
 
 lib.mkDevEnv {
   name = "banken";
-  toolsets = [ lib.toolsets.go ]; # the Go toolchain + its egress, in one line
+  toolsets = [ lib.toolsets.go ]; # the Go toolchain + its egress (dev tools are auto-included)
   # banken-specific extras on top of the Go core:
   packages = p: with p; [
     cyclonedx-gomod # just sbom
-    hyperfine # just bench
   ];
 }

@@ -1,14 +1,33 @@
-# Toolsets: reusable language/runtime bundles, each pairing the TOOLS with the egress DOMAINS those
-# tools need to fetch dependencies. A project's dev env (mkDevEnv) imports the toolsets it needs and
-# gets both automatically -- the packages land on PATH, and the domains flow into the project's
-# `egress`, which the host's containment config turns into that account's proxy allow-list on deploy.
-# So "this project is Go" means one line (toolsets = [ ts.go ]) and the right wall follows, in sync.
+# Toolsets: reusable bundles, each pairing the TOOLS with the egress DOMAINS those tools need to
+# fetch dependencies. A project's dev env (mkDevEnv) imports the language toolsets it needs and gets
+# both -- packages on PATH, domains flowed into the project's `egress`, which the host's containment
+# config turns into that account's proxy allow-list on deploy. "This project is Go" is one line
+# (toolsets = [ ts.go ]) and the right wall follows, in sync.
 #
-# Keep a toolset to the language's COMMON core; project-specific extras go on the project itself
-# (mkDevEnv's `packages` / `egress`).
+# `dev` is the common baseline: mkDevEnv includes it in EVERY env automatically, so git/gh/just/etc
+# need never be re-listed. Language toolsets hold only what is language-specific. Project-specific
+# extras go on the project itself (mkDevEnv's `packages` / `egress`).
 { pkgs }:
 
 {
+  # Included in every dev env by mkDevEnv -- the tools you want everywhere.
+  dev = {
+    packages = p: with p; [
+      git
+      gh # the GitHub CLI
+      just # command runner
+      hyperfine # benchmarking
+      jq
+      ripgrep
+      fd
+    ];
+    egress = [
+      "github.com" # git over https, releases
+      "api.github.com" # gh
+      "githubusercontent.com" # raw + release assets
+    ];
+  };
+
   go = {
     packages = p: with p; [
       go_1_27
@@ -19,14 +38,10 @@
       errcheck
       go-tools # ships the `staticcheck` binary
       delve # dlv
-      just
-      git
     ];
     egress = [
       "proxy.golang.org" # Go module proxy
       "sum.golang.org" # the checksum database
-      "github.com" # source-fetched deps, and gh
-      "githubusercontent.com"
     ];
   };
 
@@ -36,16 +51,12 @@
       bpf-linker # links aya's BPF bytecode
       cargo-deny # supply-chain gate (security software)
       pkg-config
-      just
-      git
     ];
     egress = [
       "static.rust-lang.org" # the Rust toolchain (nightly)
       "crates.io"
       "static.crates.io" # crate tarballs
       "index.crates.io" # the sparse registry index
-      "github.com" # aya + any git deps
-      "githubusercontent.com"
     ];
   };
 }

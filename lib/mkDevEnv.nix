@@ -23,11 +23,14 @@
 }:
 
 let
-  # Compose the toolsets with the project's own extras: tools are unioned onto PATH, and the egress
-  # domains are unioned into one list the host's containment config reads. "This project is Go" is
-  # then one line (toolsets = [ ts.go ]) and the tools + the wall it needs arrive together.
-  tools = pkgs.lib.concatMap (ts: ts.packages pkgs) toolsets ++ packages pkgs;
-  egressDomains = pkgs.lib.unique (pkgs.lib.concatMap (ts: ts.egress) toolsets ++ egress);
+  # Every dev env gets the common `dev` toolset (git/gh/just/...) automatically, then the project's
+  # language toolsets, then its own extras. Tools are unioned onto PATH; the egress domains are
+  # unioned into one list the host's containment config reads. "This project is Go" is then one line
+  # (toolsets = [ ts.go ]) and the tools + the wall they need arrive together.
+  common = (import ./toolsets.nix { inherit pkgs; }).dev;
+  allToolsets = [ common ] ++ toolsets;
+  tools = pkgs.lib.concatMap (ts: ts.packages pkgs) allToolsets ++ packages pkgs;
+  egressDomains = pkgs.lib.unique (pkgs.lib.concatMap (ts: ts.egress) allToolsets ++ egress);
   envLines = pkgs.lib.concatStringsSep "\n"
     (pkgs.lib.mapAttrsToList (k: v: "export ${k}=${pkgs.lib.escapeShellArg v}") env);
 
