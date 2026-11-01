@@ -57,6 +57,6 @@ in
     rac2             = import ./projects/rac2 { inherit pkgs lib tools; };
     pktlib           = import ./projects/pktlib { inherit pkgs lib tools; };
     banken           = import ./projects/banken { inherit pkgs lib tools; };
-    banken-sensor    = import ./projects/banken-sensor { inherit pkgs lib tools; };
+    mimi             = import ./projects/mimi { inherit pkgs lib tools; };  # eBPF sensor for banken (Rust/aya)
   };
 }
