@@ -50,6 +50,7 @@
       rustup # nightly + rust-src + the bpf target, fetched on first use
       bpf-linker # links aya's BPF bytecode
       cargo-deny # supply-chain gate (security software)
+      gcc # the userspace linker (rustc drives `cc` to link; the BPF side uses bpf-linker)
       pkg-config
     ];
     egress = [
