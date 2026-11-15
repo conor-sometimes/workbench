@@ -42,12 +42,27 @@ Each project picks a **runtime** (how the env is realised, not a different kind 
 | Crash Bash (PS1 decomp) | fhs | [projects/crash-bash/default.nix](projects/crash-bash/default.nix) | `crash-bash-env`: PS1 env (Psy-Q GCC 2.8.1, maspsx, mipsel binutils, just, uv) |
 | Fat Princess (PSP decomp) | fhs | [projects/fat-princess/default.nix](projects/fat-princess/default.nix) | `fat-princess-env`: PSP env (pspdecrypt, pspdev binutils+VFPU, SNC/mwccpsp/psp-gcc, ghidra-psp, Wine); `just build` rebuilds the PRX byte-for-byte |
 | pktlib (Python) | container | [projects/pktlib/default.nix](projects/pktlib/default.nix) | uv + Python 3.11–3.14 + just, to offload pktlib's property-based / mutation / soak suites |
+| Thimble (Unity game, its pure-C# core) | container | [projects/thimble/default.nix](projects/thimble/default.nix) | .NET 10 SDK + just + Python, to offload the Unity-free gates: tests, scenario suites, coverage ratchet, mutation, stress, soaks |
 
     nix run .#pktlib -- -c 'just test'            # a command in its on-demand container
     nix run .#pktlib -- --cpus 4 -- just soak 1   # with explicit caps
 
-Add one: a dir under [projects/](projects/) and a line in [default.nix](default.nix). A container
-project's `uv sync` (or any network fetch) only works where the host's egress allows it.
+    cd ~/thimble-ci/main                          # a checkout rsynced there (Thimble's `just remote`)
+    nix run .#thimble -- -c 'just test'           # whole box less a little, queued behind other heavy jobs
+
+Runner options (before `--`): `--cpus N`, `--memory M`, `--repo DIR`, `--queue NAME` / `--no-queue`,
+`--offline`, `--env NAME=VALUE`, `--name CONTAINER`, `--podman-arg ARG` (e.g. `--cpu-shares=64` so a
+background job yields the CPU to a foreground one). Each toolbox keeps a persistent cache at
+`~/.cache/toolbox-<name>` (mounted at `/cache`: uv, NuGet, ...). A toolbox with `queue = "heavy"`
+takes a per-account lock first, so heavy jobs from several checkouts run one at a time.
+
+Network: a container gets exactly the running account's egress. On a contained host (the account's
+proxy on the host's 127.0.0.1) the runner maps the host loopback into the container with pasta and
+points the proxy variables at it, so the account's allow-list applies unchanged; a fetch works where
+that allow-list has the domain (Thimble: `nuget.org`). Never `--network host` for these: a non-root
+container user is one of the account's subuids, which a uid-owner wall doesn't match.
+
+Add one: a dir under [projects/](projects/) and a line in [default.nix](default.nix).
 
 ## Tools
 

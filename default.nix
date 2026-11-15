@@ -57,6 +57,7 @@ in
     fat-princess     = import ./projects/fat-princess { inherit pkgs lib tools; };
     rac2             = import ./projects/rac2 { inherit pkgs lib tools; };
     pktlib           = import ./projects/pktlib { inherit pkgs lib tools; };
+    thimble          = import ./projects/thimble { inherit pkgs lib tools; };   # Thimble's Unity-free gates (dotnet, scenarios, mutation)
     banken           = import ./projects/banken { inherit pkgs lib tools; };
     mimi             = import ./projects/mimi { inherit pkgs lib tools; };  # eBPF sensor for banken (Rust/aya)
   };
