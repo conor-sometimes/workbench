@@ -12,4 +12,5 @@
 
 lib.platforms.ps2.mkEnv {
   name = "bokura";
+  base = "decomp-ps2";  # workbench.projects.decomp.ps2.bokura-no-kazoku
 }

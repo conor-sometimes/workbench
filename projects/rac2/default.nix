@@ -16,5 +16,6 @@
 
 lib.platforms.ps2.mkEnv {
   name = "rac2";
+  base = "decomp-ps2";  # workbench.projects.decomp.ps2.rac2
   wine = true;
 }

@@ -12,6 +12,7 @@
 
 lib.mkDevEnv {
   name = "banken";
+  base = "go";  # workbench.projects.go.banken
   toolsets = [ lib.toolsets.go ]; # the Go toolchain + its egress (dev tools are auto-included)
   # banken-specific extras on top of the Go core:
   packages = p: with p; [

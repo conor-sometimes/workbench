@@ -60,4 +60,24 @@
       "index.crates.io" # the sparse registry index
     ];
   };
+
+  python = {
+    packages = p: with p; [
+      uv # venvs and locks
+      python3
+    ];
+    egress = [
+      "pypi.org" # the package index
+      "files.pythonhosted.org" # wheels and sdists
+    ];
+  };
+
+  dotnet = {
+    packages = p: with p; [
+      dotnet-sdk_10 # net10.0
+    ];
+    egress = [
+      "nuget.org" # api.nuget.org + globalcdn.nuget.org (restore)
+    ];
+  };
 }

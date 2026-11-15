@@ -6,4 +6,5 @@
 
 lib.platforms.ps1.mkEnv {
   name = "crash-bash";
+  base = "decomp-ps1";  # workbench.projects.decomp.ps1.crash-bash
 }

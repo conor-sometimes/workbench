@@ -45,6 +45,7 @@ Each project picks a **runtime** (how the env is realised, not a different kind 
 | Thimble (Unity game, its pure-C# core) | container | [projects/thimble/default.nix](projects/thimble/default.nix) | .NET 10 SDK + just + Python, to offload the Unity-free gates: tests, scenario suites, coverage ratchet, mutation, stress, soaks |
 
     nix run .#pktlib -- -c 'just test'            # a command in its on-demand container
+    nix build .#pktlib-image && ./result | podman load   # the image is a stream script (no tarball in the store)
     nix run .#pktlib -- --cpus 4 -- just soak 1   # with explicit caps
 
     cd ~/thimble-ci/main                          # a checkout rsynced there (Thimble's `just remote`)
@@ -62,7 +63,46 @@ points the proxy variables at it, so the account's allow-list applies unchanged;
 that allow-list has the domain (Thimble: `nuget.org`). Never `--network host` for these: a non-root
 container user is one of the account's subuids, which a uid-owner wall doesn't match.
 
-Add one: a dir under [projects/](projects/) and a line in [default.nix](default.nix).
+Add one: a dir under [projects/](projects/) (with its `base`) and a line in [default.nix](default.nix).
+
+## Bases and projects
+
+A **base** is a generic toolchain env: `decomp` (what every decomp shares), `decomp-ps2`,
+`decomp-ps1`, `decomp-psp` (each on `decomp`), `go`, `rust`, `python`, `dotnet`, `unity`
+([bases/default.nix](bases/default.nix)). A **project** is one repo's env and sits on one base
+(`base = "decomp-ps2";` in its file): the same builder, the base's packages plus its own, so what
+they share is one set of store paths. For containers the image is layered in the chain's tiers, so a
+base's layers are byte-identical in every image on it and podman stores them once; a second project
+on a base costs only its own layers. Bases can nest to any depth (`base = "decomp"` on decomp-ps2).
+
+Unity: the `unity` base is one env per editor version (`lib.mkUnityEnv { version; modules; }`),
+carrying the .NET SDK and, from Thimble's stage 1, the Linux Unity Editor (not in it yet: nothing of
+Unity is downloaded today). Thimble sits on it at its pinned version (`base = "unity";
+baseArgs.version = "6000.6.9f1";`), so another Unity project on the same version shares it.
+
+## Enabling projects on a host
+
+The flake exports a NixOS module (`nixosModules.default`; from a `flake = false` input, import
+`"${inputs.workbench}/module.nix"`). Every base and project is an option, off by default; the tree
+follows the bases, each under its parent (its "<parent>-" prefix dropped):
+
+```nix
+{ inputs, ... }: {
+  imports = [ "${inputs.workbench}/module.nix" ];
+
+  workbench.projects.unity.thimble.enable = true;        # toolbox-thimble + toolbox-unity-6000.6.9f1
+  workbench.projects.unity.thimble.cpus = "4";           # container envs: default caps (cpus, memory)
+  workbench.projects.decomp.ps2.lombyte.enable = true;   # lombyte-env + decomp-ps2-env + decomp-env
+  workbench.projects.rust.mimi.enable = true;            # mimi-env + rust-env
+  workbench.projects.rust.enable = true;                 # a base alone: the bare toolchain
+}
+```
+
+Enabling a project installs its launcher (`<name>-env`, or `toolbox-<name>` for containers) and
+its whole chain of bases system-wide; a disabled one adds nothing. A container's image is a stream
+script in the closure, so the host build realises its packages and the first job only runs
+`podman load`. The module generates the options from the registries: adding a base or project
+needs no module edit. `nix run .#<name>` and `nix develop .#<name>` work as before, for bases too.
 
 ## Tools
 

@@ -7,5 +7,6 @@
 
 lib.platforms.ps2.mkEnv {
   name = "lombyte";
+  base = "decomp-ps2";  # workbench.projects.decomp.ps2.lombyte
   wine = true;
 }

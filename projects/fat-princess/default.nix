@@ -8,5 +8,6 @@
 
 lib.platforms.psp.mkEnv {
   name = "fat-princess";
+  base = "decomp-psp";  # workbench.projects.decomp.psp.fat-princess
   wine = true;
 }

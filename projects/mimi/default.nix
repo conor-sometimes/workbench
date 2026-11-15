@@ -13,6 +13,7 @@
 
 lib.mkDevEnv {
   name = "mimi";
+  base = "rust";  # workbench.projects.rust.mimi
   toolsets = [ lib.toolsets.rust ]; # the Rust/aya toolchain + its egress (dev tools auto-included)
   profile = ''
     echo "mimi: first run -> rustup toolchain install nightly --component rust-src" >&2

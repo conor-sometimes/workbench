@@ -20,15 +20,24 @@
 #
 # Queue: `queue = "heavy"` (or `--queue NAME`) takes a per-account flock before the container starts,
 # so two heavy jobs of any toolbox sharing that queue name run one after the other, not at once.
-{ pkgs }:
+#
+# Sharing: the image is streamed (streamLayeredImage), so the store holds only the packages, never a
+# tarball copy of them; podman builds its layers at `podman load`. A toolbox on a container base
+# (`base = "unity"`) is layered in tiers: the common userland, then each base's own packages, then
+# its own, each tier laid out by the same rule from the same paths. So a base's layers are
+# byte-identical in every image built on it, and podman stores them once: a second project on the
+# same base costs only its own layers.
+{ pkgs, resolveBase ? (_: _: throw "mkToolbox: no base registry") }:
 
-spec@{
+let mk = spec@{
   name,
   packages ? (_: [ ]),          # project tools in the image (a function of nixpkgs)
   resources ? { },              # { cpus = 4; memory = "8g"; } defaults for the run
   env ? { },                    # extra container environment (NAME = "value")
   queue ? "",                   # default queue name ("" = none): one job per queue at a time
   tag ? null,                   # null = the image's own store hash (a rebuild never reuses a stale image)
+  base ? null,                 # the base env this project sits under (bases/default.nix): workbench.projects.<base>.<project>
+  baseArgs ? { },              # what this project needs of its base (e.g. { version = "..."; } for unity)
 }:
 
 let
@@ -36,13 +45,28 @@ let
   memory = resources.memory or "8g";
 
   # The image: a minimal userland (bash/coreutils/git + TLS roots, /usr/bin/env, /bin/sh, a passwd
-  # for tools that look the user up, a writable /tmp) plus the project's tools.
-  image = pkgs.dockerTools.buildLayeredImage {
+  # for tools that look the user up, a writable /tmp), the base's tools, the project's tools.
+  userland = (with pkgs; [ bashInteractive coreutils gitMinimal cacert ])
+    ++ (with pkgs.dockerTools; [ usrBinEnv binSh fakeNss ]);
+  baseEnv = if base == null then null else resolveBase base baseArgs;
+  # tiers of contents, outermost first: [ userland  <each base's packages>  <ours> ]
+  tiers = (if baseEnv != null && baseEnv ? tiers then baseEnv.tiers else [ userland ]) ++ [ (packages pkgs) ];
+  # layers: split off each tier's closure in turn (what earlier tiers hold stays in theirs), then lay
+  # out each by popularity within it alone, so a tier's layers never depend on what comes after it
+  byPopularity = n: [ "pipe" [ [ "popularity_contest" ] [ "limit_layers" n ] ] ];
+  pipeline = ts:
+    if builtins.length ts == 1 then byPopularity 30
+    else [ "pipe" [
+      [ "subcomponent_out" (map toString (builtins.head ts)) ]
+      [ "over" "main" (byPopularity 30) ]
+      [ "over" "rest" (pipeline (builtins.tail ts)) ]
+      [ "flatten" ]
+    ] ];
+  image = pkgs.dockerTools.streamLayeredImage {
     name = "toolbox-${name}";
     inherit tag;
-    contents = (with pkgs; [ bashInteractive coreutils gitMinimal cacert ])
-      ++ (with pkgs.dockerTools; [ usrBinEnv binSh fakeNss ])
-      ++ packages pkgs;
+    contents = pkgs.lib.unique (builtins.concatLists tiers);
+    layeringPipeline = [ (pipeline tiers) ];
     extraCommands = "mkdir -p -m 1777 tmp";
     config.WorkingDir = "/work";
   };
@@ -82,7 +106,7 @@ let
       # load the nix-built image into podman once per build (its tag is the image's store hash, so a
       # rebuilt image is a new tag), then drop this toolbox's older tags (in-use ones stay)
       if ! podman image exists "$img"; then
-        podman load -q -i ${image} >/dev/null
+        ${image} | podman load -q >/dev/null
         podman images --format '{{.Repository}}:{{.Tag}}' "localhost/toolbox-${name}" | grep -v ":${image.imageTag}$" \
           | xargs -r podman rmi >/dev/null 2>&1 || true
       fi
@@ -134,7 +158,22 @@ in
 # interactive `shell`, an optional `image`, and the `runtime` tag. The flake treats every project
 # alike by this shape — a decomp env and a container toolbox are just two runtimes.
 {
-  inherit name image run resources;
+  inherit name image run resources base baseArgs tiers;
   runtime = "container";
   shell = null;   # `nix develop` into a container isn't offered; use the FHS envs for that
-}
+  # host options the NixOS module adds under workbench.projects.<name>: the default caps, so a host
+  # can size a toolbox to its box. `override` rebuilds only the runner; the image is unchanged.
+  options = l: {
+    cpus = l.mkOption {
+      type = l.types.str; default = cpus;
+      description = "Default CPU cap (podman --cpus) of this toolbox's runs; --cpus overrides it per run.";
+    };
+    memory = l.mkOption {
+      type = l.types.str; default = memory;
+      description = "Default memory cap (podman --memory) of this toolbox's runs; --memory overrides it per run.";
+    };
+  };
+  override = s: mk (spec // { resources = resources // s; });   # s: { cpus?; memory?; }
+};
+in
+mk

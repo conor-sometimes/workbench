@@ -20,6 +20,8 @@
   egress ? [ ],           # project-specific domains on top of the toolsets'
   env ? { },              # extra environment (NAME = "value")
   profile ? "",           # extra shell setup sourced on entry
+  base ? null,                 # the base env this project sits under (bases/default.nix): workbench.projects.<base>.<project>
+  baseArgs ? { },              # what this project needs of its base (e.g. { version = "..."; } for unity)
 }:
 
 let
@@ -57,7 +59,7 @@ in
 # the common project shape (as mkDecompEnv / mkToolbox), plus the composed `egress` list for the
 # host config to read.
 {
-  inherit name run shell;
+  inherit name run shell base baseArgs;
   egress = egressDomains;
   image = null;
   runtime = "devenv";

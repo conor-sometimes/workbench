@@ -16,12 +16,14 @@
       inherit (pkgs) lib;
       d = import ./default.nix { inherit pkgs; };
       # Everything is defined once, in default.nix; the flake only re-exposes it.
-      projects = d.projects;   # every project env: { name; run; shell; image; runtime }
+      # every base and project env: { name; run; shell; image; runtime }; placeholders (run = null, e.g. the
+      # unity base before stage 1) have no outputs yet, only their NixOS module option
+      projects = lib.filterAttrs (_: p: p.run != null) (d.bases // d.projects);
       # package sets (ghidra.ps2, ee-gcc.ee-gcc2_96, ...) flattened to ghidra-ps2, ee-gcc2_96, ...
       nested = lib.concatMapAttrs (n: set:
         lib.mapAttrs' (k: v: lib.nameValuePair (if lib.hasPrefix n k then k else "${n}-${k}") v)
           (lib.filterAttrs (_: lib.isDerivation) set))
-        (lib.filterAttrs (n: v: builtins.isAttrs v && !(lib.isDerivation v) && n != "lib" && n != "projects") d);
+        (lib.filterAttrs (n: v: builtins.isAttrs v && !(lib.isDerivation v) && n != "lib" && n != "projects" && n != "bases") d);
       tools = lib.filterAttrs (_: lib.isDerivation) d;
 
       # One shape for every project, whatever its runtime: `.run` is the command runner, `.shell`
@@ -37,6 +39,11 @@
     in
     {
       lib = d.lib;
+
+      # NixOS module: workbench.projects.<name>.enable per host (module.nix; also importable from a
+      # flake = false input as "${workbench}/module.nix")
+      nixosModules.workbench = ./module.nix;
+      nixosModules.default = self.nixosModules.workbench;
 
       # tools + flattened tool sets + every project's runner (+ <name>-image for container projects)
       packages.${system} = tools // nested // projRun // projImages;

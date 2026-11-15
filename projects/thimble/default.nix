@@ -15,7 +15,9 @@
 # machine that has restored (rsync ~/.nuget/packages/ to ~/.cache/toolbox-thimble/nuget/) is enough.
 #
 # Unity itself (unity-check, unity-test, scenarios-mono: they need the Editor's compiler and its Mono)
-# is not here yet: that's a later Unity Linux Editor stage.
+# comes from the `unity` base this project sits under (bases/default.nix), at Thimble's pinned editor
+# version: a placeholder until the Unity Linux Editor stage (stage 1) builds it. Host option:
+# workbench.projects.unity.thimble.enable.
 { pkgs, lib, tools }:
 
 let
@@ -33,6 +35,8 @@ let
 in
 lib.mkToolbox {
   name = "thimble";
+  base = "unity";  # workbench.projects.unity.thimble
+  baseArgs.version = "6000.6.9f1"; # the Editor Thimble is pinned to
   packages = p: [ just ] ++ (with p; [   # just: the recipes (pinned above)
     dotnet-sdk_10                  # the SDK the solution targets (net10.0)
     python3                        # tools/*.py

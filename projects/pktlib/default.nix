@@ -11,6 +11,7 @@
 
 lib.mkToolbox {
   name = "pktlib";
+  base = "python";  # workbench.projects.python.pktlib
   packages = p: with p; [ uv just python311 python312 python313 python314 ];
   resources = { cpus = 4; memory = "8g"; };
   env = {

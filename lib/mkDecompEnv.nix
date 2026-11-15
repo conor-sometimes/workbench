@@ -18,6 +18,8 @@
   multiPackages ? (p: [ ]),    # extra libraries needed in both 64- and 32-bit form
   pythonPackages ? (ps: [ ]),  # extra Python packages
   profile ? "",                # extra shell setup
+  base ? null,                 # the base env this project sits under (bases/default.nix): workbench.projects.<base>.<project>
+  baseArgs ? { },              # what this project needs of its base (e.g. { version = "..."; } for unity)
 }:
 
 let e = pkgs.buildFHSEnv {
@@ -58,7 +60,7 @@ in
 # { name; run; shell; image; runtime } a container toolbox returns, so the flake treats every
 # project alike (decomp, python, rust, ...), with the runtime a per-project knob, not a split.
 {
-  inherit name;
+  inherit name base baseArgs;
   run = e;         # the FHS env (bin/${name}-env); `nix run .#<project> -- -c 'cmd'`
   shell = e.env;   # its interactive devShell; `nix develop .#<project>`
   image = null;
