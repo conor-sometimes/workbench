@@ -5,6 +5,8 @@
 #   workbench.projects.decomp.ps2.lombyte.enable = true; # lombyte-env, plus decomp-ps2-env and decomp-env
 #   workbench.projects.rust.enable = true;               # a base alone: the bare toolchain (rust-env)
 #   workbench.projects.unity.thimble.cpus = "4";         # container envs: default caps
+#   workbench.user = "claude";                           # the account that owns per-project git remotes
+#   workbench.projects.unity.thimble.gitRemote.enable = true;   # ~claude/repos/thimble.git (see below)
 #
 # The option tree comes from the registries (bases/default.nix, projects/*/default.nix): each base
 # is a node under its parent base (its id's "<parent>-" prefix dropped: decomp-ps2 -> decomp.ps2)
@@ -14,10 +16,22 @@
 # nothing. Enabling a base or project brings its whole chain of bases (at the version a project
 # pins, if it pins one). A container env's image is a stream script in the closure: the host build
 # realises its packages, and the first job only has to `podman load` it.
+#
+# Git remote (any project): `gitRemote.enable` gives the project a bare repo on this host at
+# ~<workbench.user>/repos/<project>.git, pushed to over the account's existing ssh (no new keys, no
+# third party): `git push <host>:repos/<project>.git HEAD:refs/lanes/<lane>`. A oneshot unit,
+# running as that account, creates it with `git init --bare` only if it is missing (an existing repo
+# is never touched beyond its hooks setting) and a checkout cache at ~/.cache/workbench-git/<project>.
+# A container toolbox mounts the bare repo read-only and the cache read-write, both at their host
+# paths (so a worktree made on either side resolves on the other), and exports WORKBENCH_GIT_REPO /
+# WORKBENCH_GIT_CACHE. `gitRemote.pruneLanesAfterDays` (default 14, null = keep all) installs a
+# post-receive hook that deletes refs/lanes/* whose tip commit is older than that, never a ref the
+# same push just updated.
 { config, lib, pkgs, ... }:
 
 let
   cfg = config.workbench.projects;
+  user = config.workbench.user;
 
   # The registries, read for option declarations without pkgs (pkgs depends on config, so options
   # built from it would recurse): names, bases and builders' options must not force pkgs.
@@ -58,11 +72,22 @@ let
     // lib.listToAttrs (map (c: lib.nameValuePair (lib.last (pathOf c)) (node c)) (childBases b))
     // lib.mapAttrs (n: p: {
       enable = lib.mkEnableOption "the ${n} env (${p.runtime}), installed system-wide with its bases (${toString (chainOf b)})";
+      gitRemote = gitRemoteOptions n;
     } // optsOf p) (projectsOn b);
 
+  gitRemoteOptions = n: {
+    enable = lib.mkEnableOption "a bare git repo for ${n} on this host (~<workbench.user>/repos/${n}.git) and its checkout cache, mounted into its toolbox";
+    pruneLanesAfterDays = lib.mkOption {
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = 14;
+      description = "A post-receive hook deletes refs/lanes/* whose tip commit is older than this many days (never a ref the same push updated); null = no hook.";
+    };
+  };
+
   # what gets installed
+  projectCfg = n: (at meta.projects.${n}.base).${n};
   enabledBases = builtins.filter (b: (at b).enable) (builtins.attrNames meta.bases);
-  enabledProjects = builtins.filter (n: (at meta.projects.${n}.base).${n}.enable) (builtins.attrNames meta.projects);
+  enabledProjects = builtins.filter (n: (projectCfg n).enable) (builtins.attrNames meta.projects);
   # a base env with the host's settings, plus what a project asks of it (only the direct base)
   baseEnv = b: args: applied wb.bases.${b} (settingsOf b // args);
   chainEnvs = b: args: map (c: baseEnv c (if c == b then args else { })) (chainOf b);
@@ -70,11 +95,63 @@ let
     lib.concatMap (b: chainEnvs b { }) enabledBases
     ++ lib.concatMap (n:
       let p = wb.projects.${n}; b = meta.projects.${n}.base; in
-      [ (applied p (removeAttrs (at b).${n} [ "enable" ])) ] ++ chainEnvs b (p.baseArgs or { }))
+      [ (applied p (removeAttrs (projectCfg n) [ "enable" "gitRemote" ]
+        // lib.optionalAttrs ((projectCfg n).gitRemote.enable && p.runtime == "container") { gitRemote = gitPaths n; })) ]
+      ++ chainEnvs b (p.baseArgs or { }))
       enabledProjects;
+
+  # per-project git remotes (see the header)
+  remoteProjects = builtins.filter (n: (projectCfg n).gitRemote.enable) (builtins.attrNames meta.projects);
+  hasUser = user != null && config.users.users ? ${user};
+  home = if hasUser then config.users.users.${user}.home else "/nonexistent";
+  gitPaths = n: { repo = "${home}/repos/${n}.git"; cache = "${home}/.cache/workbench-git/${n}"; };
+  git = config.workbench.pkgs.gitMinimal;
+  pruneHook = n: config.workbench.pkgs.writeShellApplication {
+    name = "post-receive";
+    runtimeInputs = [ git config.workbench.pkgs.coreutils config.workbench.pkgs.gnugrep ];
+    text = ''
+      # workbench: prune refs/lanes/* whose tip commit is older than ${toString (projectCfg n).gitRemote.pruneLanesAfterDays} days
+      days=${toString (projectCfg n).gitRemote.pruneLanesAfterDays}
+      cutoff=$(( $(date +%s) - days * 86400 ))
+      pushed=$(cut -d' ' -f3)   # stdin: "<old> <new> <ref>" per updated ref
+      git for-each-ref --format='%(committerdate:unix) %(refname)' refs/lanes/ |
+        while read -r when ref; do
+          [ "$when" -lt "$cutoff" ] || continue
+          if printf '%s\n' "$pushed" | grep -qxF "$ref"; then continue; fi
+          echo "workbench: pruning $ref (tip older than $days days)"
+          git update-ref -d "$ref"
+        done
+    '';
+  };
+  setupScript = n:
+    let g = gitPaths n; prune = (projectCfg n).gitRemote.pruneLanesAfterDays; in
+    config.workbench.pkgs.writeShellApplication {
+      name = "workbench-git-${n}";
+      runtimeInputs = [ git config.workbench.pkgs.coreutils ];
+      text = ''
+        repo=${lib.escapeShellArg g.repo}; cache=${lib.escapeShellArg g.cache}
+        mkdir -p "$repo" "$cache"
+        if [ ! -f "$repo/HEAD" ]; then
+          git init --bare -q -b main "$repo"
+          echo "workbench: created $repo"
+        fi
+        # lanes fetch exact commits from it
+        git -C "$repo" config uploadpack.allowReachableSHA1InWant true
+      '' + (if prune == null then ''
+        git -C "$repo" config --unset core.hooksPath || true
+      '' else ''
+        git -C "$repo" config core.hooksPath /etc/workbench/git-hooks/${n}
+      '');
+    };
 in
 {
   options.workbench = {
+    user = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "claude";
+      description = "The account that owns the per-project git remotes (gitRemote) and pushes to them over ssh.";
+    };
     pkgs = lib.mkOption {
       type = lib.types.pkgs;
       default = pkgs;
@@ -89,9 +166,27 @@ in
     assertions = [{
       assertion = orphans == [ ];
       message = "workbench: ${toString orphans} name a base that is not in bases/default.nix";
+    } {
+      assertion = remoteProjects == [ ] || hasUser;
+      message = "workbench: gitRemote is on for ${toString remoteProjects}: set workbench.user to an existing account";
     }];
     # the same env reached twice (a base enabled alone and under a project) is one path, once
     environment.systemPackages = lib.unique (map (e: e.run) (builtins.filter (e: e.run != null) envs));
+    # each git remote: a oneshot as the owning account (re-run on every switch that changes it)
+    systemd.services = lib.listToAttrs (map (n: lib.nameValuePair "workbench-git-${n}" {
+      description = "workbench: bare git repo and checkout cache for ${n}";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "local-fs.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        User = user;
+        ExecStart = lib.getExe (setupScript n);
+      };
+    }) remoteProjects);
+    environment.etc = lib.listToAttrs (map (n: lib.nameValuePair "workbench/git-hooks/${n}/post-receive" {
+      source = lib.getExe (pruneHook n);
+    }) (builtins.filter (n: (projectCfg n).gitRemote.pruneLanesAfterDays != null) remoteProjects));
     warnings = map (b: "workbench: ${b}: ${wb.bases.${b}.placeholder}")
       (builtins.filter (b: wb.bases.${b} ? placeholder) enabledBases);
   };

@@ -40,6 +40,7 @@ let mk = spec@{
   baseArgs ? { },              # what this project needs of its base (e.g. { version = "..."; } for unity)
   devices ? null,              # host devices to pass in (e.g. [ "/dev/dri" ] for a GPU); null = the base's
   gpuDriver ? null,            # a Mesa driver tree linked at /run/opengl-driver; null = the base's
+  gitRemote ? null,            # { repo; cache; }: the host's bare repo (mounted ro) and checkout cache (rw)
 }:
 
 let
@@ -76,6 +77,18 @@ let
       + pkgs.lib.optionalString (driver != null) "\nmkdir -p run && ln -s ${driver} run/opengl-driver";
     config.WorkingDir = "/work";
   };
+
+  # the project's git remote on this host (workbench.projects.<base>.<project>.gitRemote): the bare
+  # repo read-only and the checkout cache read-write, each at its host path, so a worktree made on
+  # either side (its .git file holds an absolute path) resolves on the other
+  gitMounts = pkgs.lib.optionalString (gitRemote != null) ''
+    gitrepo=${pkgs.lib.escapeShellArg gitRemote.repo}; gitcache=${pkgs.lib.escapeShellArg gitRemote.cache}
+    if [ -f "$gitrepo/HEAD" ]; then
+      mkdir -p "$gitcache"
+      extra+=(-v "$gitrepo:$gitrepo:ro" -v "$gitcache:$gitcache"
+              -e "WORKBENCH_GIT_REPO=$gitrepo" -e "WORKBENCH_GIT_CACHE=$gitcache")
+    fi
+  '';
 
   # Extra `-e NAME=value` flags for podman, from `env`.
   envFlags = pkgs.lib.concatStringsSep " "
@@ -157,6 +170,7 @@ let
       done
       if [ ''${#gpu[@]} -gt 0 ]; then gpu+=(--group-add keep-groups); fi
 
+      ${gitMounts}
       # shellcheck disable=SC2086
       exec podman run --rm \
         --cpus="$cpus" --memory="$memory" \
@@ -173,7 +187,7 @@ in
 # alike by this shape — a decomp env and a container toolbox are just two runtimes.
 {
   inherit name image run resources base baseArgs tiers;
-  devices = devs; gpuDriver = driver;
+  devices = devs; gpuDriver = driver; inherit gitRemote;
   runtime = "container";
   shell = null;   # `nix develop` into a container isn't offered; use the FHS envs for that
   # host options the NixOS module adds under workbench.projects.<name>: the default caps, so a host
@@ -188,7 +202,9 @@ in
       description = "Default memory cap (podman --memory) of this toolbox's runs; --memory overrides it per run.";
     };
   };
-  override = s: mk (spec // { resources = resources // s; });   # s: { cpus?; memory?; }
+  # s: { cpus?; memory?; gitRemote?; } (gitRemote: from the module's gitRemote option, see module.nix)
+  override = s: mk (spec // { resources = resources // removeAttrs s [ "gitRemote" ]; }
+    // pkgs.lib.optionalAttrs (s ? gitRemote) { inherit (s) gitRemote; });
 };
 in
 mk

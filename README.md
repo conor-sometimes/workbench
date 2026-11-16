@@ -92,6 +92,8 @@ follows the bases, each under its parent (its "<parent>-" prefix dropped):
 
   workbench.projects.unity.thimble.enable = true;        # toolbox-thimble + toolbox-unity-6000.6.9f1
   workbench.projects.unity.thimble.cpus = "4";           # container envs: default caps (cpus, memory)
+  workbench.user = "claude";                             # the account that owns git remotes
+  workbench.projects.unity.thimble.gitRemote.enable = true;   # ~claude/repos/thimble.git, see below
   workbench.projects.decomp.ps2.lombyte.enable = true;   # lombyte-env + decomp-ps2-env + decomp-env
   workbench.projects.rust.mimi.enable = true;            # mimi-env + rust-env
   workbench.projects.rust.enable = true;                 # a base alone: the bare toolchain
@@ -103,6 +105,21 @@ its whole chain of bases system-wide; a disabled one adds nothing. A container's
 script in the closure, so the host build realises its packages and the first job only runs
 `podman load`. The module generates the options from the registries: adding a base or project
 needs no module edit. `nix run .#<name>` and `nix develop .#<name>` work as before, for bases too.
+
+A project's `gitRemote.enable` gives it a bare git repo on the host, so lanes push to the box over
+the account's existing ssh instead of syncing through a third party:
+
+```sh
+git push <host>:repos/thimble.git HEAD:refs/lanes/<lane>
+```
+
+A oneshot unit (`workbench-git-<project>`, run as `workbench.user`) creates
+`~/repos/<project>.git` with `git init --bare` only when it is missing, and a checkout cache at
+`~/.cache/workbench-git/<project>`. The project's toolbox mounts the repo read-only and the cache
+read-write, each at its host path (a worktree made on either side resolves on the other), and sets
+`WORKBENCH_GIT_REPO` and `WORKBENCH_GIT_CACHE`. A post-receive hook deletes `refs/lanes/*` whose tip
+commit is older than `gitRemote.pruneLanesAfterDays` (default 14; `null` = no hook), never a ref
+the same push updated. Git LFS objects are not stored there: the repo holds plain git objects only.
 
 ## Tools
 
