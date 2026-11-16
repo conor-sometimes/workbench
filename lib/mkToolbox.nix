@@ -151,7 +151,8 @@ let
 
       # GPU: pass each listed device that exists on this host, keeping the account's groups (render/video)
       gpu=()
-      for d in ${pkgs.lib.concatStringsSep " " devs}; do
+      devices=(${pkgs.lib.concatMapStringsSep " " pkgs.lib.escapeShellArg devs})
+      for d in "''${devices[@]}"; do
         if [ -e "$d" ]; then gpu+=(--device "$d"); fi
       done
       if [ ''${#gpu[@]} -gt 0 ]; then gpu+=(--group-add keep-groups); fi
