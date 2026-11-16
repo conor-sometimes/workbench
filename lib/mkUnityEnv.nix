@@ -24,6 +24,10 @@ let
     tb = mkToolbox {
       name = "unity-${version}";
       inherit resources;
+      # The GPU (Vega 11 on hokkaido, any render node elsewhere): Blender's Eevee and, from stage 1, the
+      # Unity Editor draw headless over EGL on Mesa. The account needs the render/video groups on the host.
+      devices = [ "/dev/dri" ];
+      gpuDriver = pkgs.buildEnv { name = "opengl-driver"; paths = [ pkgs.mesa ]; };
       # Blender (headless `blender -b`): art lanes run model exports, model checks and review-sheet
       # renders here instead of on a Mac. Rendering uses Eevee over EGL/Mesa where a GPU is passed in,
       # else Workbench or Cycles on the CPU. The Macs run Blender 5.3; keep this in step when bumping.
@@ -37,6 +41,7 @@ let
   in
   tb // {
     inherit version modules;
+    devices = tb.devices; gpuDriver = tb.gpuDriver;
     egress = toolsets.dotnet.egress;   # stage 1: + Unity's download hosts
     placeholder = "the Unity Editor itself is not in it yet (Thimble stage 1); this is its .NET half";
     options = l: tb.options l // {

@@ -38,6 +38,8 @@ let mk = spec@{
   tag ? null,                   # null = the image's own store hash (a rebuild never reuses a stale image)
   base ? null,                 # the base env this project sits under (bases/default.nix): workbench.projects.<base>.<project>
   baseArgs ? { },              # what this project needs of its base (e.g. { version = "..."; } for unity)
+  devices ? null,              # host devices to pass in (e.g. [ "/dev/dri" ] for a GPU); null = the base's
+  gpuDriver ? null,            # a Mesa driver tree linked at /run/opengl-driver; null = the base's
 }:
 
 let
@@ -49,6 +51,9 @@ let
   userland = (with pkgs; [ bashInteractive coreutils gitMinimal cacert ])
     ++ (with pkgs.dockerTools; [ usrBinEnv binSh fakeNss ]);
   baseEnv = if base == null then null else resolveBase base baseArgs;
+  # GPU passthrough (render nodes) and the Mesa tree nixpkgs' GL/EGL apps look for at /run/opengl-driver
+  devs = if devices != null then devices else (if baseEnv != null then baseEnv.devices or [ ] else [ ]);
+  driver = if gpuDriver != null then gpuDriver else (if baseEnv != null then baseEnv.gpuDriver or null else null);
   # tiers of contents, outermost first: [ userland  <each base's packages>  <ours> ]
   tiers = (if baseEnv != null && baseEnv ? tiers then baseEnv.tiers else [ userland ]) ++ [ (packages pkgs) ];
   # layers: split off each tier's closure in turn (what earlier tiers hold stays in theirs), then lay
@@ -67,7 +72,8 @@ let
     inherit tag;
     contents = pkgs.lib.unique (builtins.concatLists tiers);
     layeringPipeline = [ (pipeline tiers) ];
-    extraCommands = "mkdir -p -m 1777 tmp";
+    extraCommands = "mkdir -p -m 1777 tmp"
+      + pkgs.lib.optionalString (driver != null) "\nmkdir -p run && ln -s ${driver} run/opengl-driver";
     config.WorkingDir = "/work";
   };
 
@@ -143,13 +149,20 @@ let
         fi
       fi
 
+      # GPU: pass each listed device that exists on this host, keeping the account's groups (render/video)
+      gpu=()
+      for d in ${pkgs.lib.concatStringsSep " " devs}; do
+        if [ -e "$d" ]; then gpu+=(--device "$d"); fi
+      done
+      if [ ''${#gpu[@]} -gt 0 ]; then gpu+=(--group-add keep-groups); fi
+
       # shellcheck disable=SC2086
       exec podman run --rm \
         --cpus="$cpus" --memory="$memory" \
         -v "$repo":/work -v "$cache":/cache -w /work \
         -e HOME=/tmp -e XDG_CACHE_HOME=/cache -e UV_CACHE_DIR=/cache/uv \
         -e SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt \
-        "''${net[@]}" ${envFlags} "''${extra[@]}" \
+        "''${net[@]}" "''${gpu[@]}" ${envFlags} "''${extra[@]}" \
         "$img" bash -lc "$*"
     '';
   };
@@ -159,6 +172,7 @@ in
 # alike by this shape — a decomp env and a container toolbox are just two runtimes.
 {
   inherit name image run resources base baseArgs tiers;
+  devices = devs; gpuDriver = driver;
   runtime = "container";
   shell = null;   # `nix develop` into a container isn't offered; use the FHS envs for that
   # host options the NixOS module adds under workbench.projects.<name>: the default caps, so a host
