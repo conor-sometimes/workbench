@@ -6,6 +6,8 @@
 #
 #   lib.mkUnityEnv { version = "6000.6.9f1"; modules = [ "linux-il2cpp" ]; }   # -> toolbox-unity-6000.6.9f1
 #
+# It also carries Blender, headless, for the art half of a Unity project (model exports, checks, sheets).
+#
 # STAGE 1 PENDING (Thimble stage 1): the Editor is not in it yet and nothing of Unity is downloaded;
 # today the env is the .NET half only. `placeholder` says so (the NixOS module warns when the base is
 # enabled on its own). Stage 1 adds the Editor (plus `modules`) to `packages` below (or a `.run` of
@@ -22,7 +24,10 @@ let
     tb = mkToolbox {
       name = "unity-${version}";
       inherit resources;
-      packages = p: toolsets.dotnet.packages p;   # stage 1: + the Editor at `version` with `modules`
+      # Blender (headless `blender -b`): art lanes run model exports, model checks and review-sheet
+      # renders here instead of on a Mac. Rendering uses Eevee over EGL/Mesa where a GPU is passed in,
+      # else Workbench or Cycles on the CPU. The Macs run Blender 5.3; keep this in step when bumping.
+      packages = p: toolsets.dotnet.packages p ++ [ p.blender ];   # stage 1: + the Editor at `version` with `modules`
       env = {
         DOTNET_CLI_TELEMETRY_OPTOUT = "1";
         DOTNET_NOLOGO = "1";
