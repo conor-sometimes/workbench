@@ -73,8 +73,15 @@
   };
 
   dotnet = {
-    packages = p: with p; [
-      dotnet-sdk_10 # net10.0
+    # .NET SDK 11.0.100 (Thimble pins it exactly in global.json, rollForward disable, 2026-11-20).
+    # nixos-26.05 only has 11.0.100-rc.3 so far, so the SDK alone comes from a pinned nixpkgs master
+    # commit. When 26.05 ships 11.0.100, go back to `p.dotnet-sdk_11` (one pin, flake.lock).
+    # One SDK only: a second SDK earlier on PATH would win `dotnet` and miss the global.json pin.
+    packages = p: [
+      (import (fetchTarball {
+        url = "https://github.com/NixOS/nixpkgs/archive/56cb4aa734e07e622c02d5c6fc0c3746fa79761a.tar.gz";
+        sha256 = "031lf4qhza6psgqqy4iiclfllvgcl83w38c23vcl6xbzs39knj7p";
+      }) { system = p.stdenv.hostPlatform.system; }).dotnetCorePackages.sdk_11_0
     ];
     egress = [
       "nuget.org" # api.nuget.org + globalcdn.nuget.org (restore)

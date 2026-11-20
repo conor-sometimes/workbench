@@ -32,19 +32,12 @@ let
     sourceRoot = ".";
     installPhase = "install -Dm755 just $out/bin/just";
   };
-  # .NET SDK 11.0.100: Thimble pins it exactly (global.json, rollForward disable, 2026-11-20). nixos-26.05 only
-  # has 11.0.100-rc.3 so far, so the SDK alone comes from a pinned nixpkgs master commit. When 26.05 ships
-  # 11.0.100, drop this and use p.dotnet-sdk_11 again (one pin, flake.lock).
-  dotnet11 = (import (fetchTarball {
-    url = "https://github.com/NixOS/nixpkgs/archive/56cb4aa734e07e622c02d5c6fc0c3746fa79761a.tar.gz";
-    sha256 = "031lf4qhza6psgqqy4iiclfllvgcl83w38c23vcl6xbzs39knj7p";
-  }) { system = pkgs.stdenv.hostPlatform.system; }).dotnetCorePackages.sdk_11_0;
 in
 lib.mkToolbox {
   name = "thimble";
   base = "unity";  # workbench.projects.unity.thimble
   baseArgs.version = "6000.6.9f1"; # the Editor Thimble is pinned to
-  packages = p: [ just dotnet11 ] ++ (with p; [   # just: the recipes; dotnet11: the SDK global.json pins (both above)
+  packages = p: [ just ] ++ (with p; [   # just: the recipes (pinned above); the .NET SDK comes from the unity base (lib/toolsets.nix dotnet)
     python3                        # tools/*.py
     gnugrep gnused gawk findutils diffutils gnutar gzip procps which rsync   # what recipes shell out to
   ]);
