@@ -40,6 +40,7 @@ let mk = spec@{
   baseArgs ? { },              # what this project needs of its base (e.g. { version = "..."; } for unity)
   devices ? null,              # host devices to pass in (e.g. [ "/dev/dri" ] for a GPU); null = the base's
   gpuDriver ? null,            # a Mesa driver tree linked at /run/opengl-driver; null = the base's
+  loader ? false,              # link the glibc loader at /lib64/ld-linux-x86-64.so.2 (for foreign glibc-native binaries)
   gitRemote ? null,            # { repo; cache; }: the host's bare repo (mounted ro) and checkout cache (rw)
 }:
 
@@ -55,6 +56,8 @@ let
   # GPU passthrough (render nodes) and the Mesa tree nixpkgs' GL/EGL apps look for at /run/opengl-driver
   devs = if devices != null then devices else (if baseEnv != null then baseEnv.devices or [ ] else [ ]);
   driver = if gpuDriver != null then gpuDriver else (if baseEnv != null then baseEnv.gpuDriver or null else null);
+  useLoader = loader || (baseEnv != null && baseEnv.loader or false);
+  allEnv = (if baseEnv != null then baseEnv.env or { } else { }) // env;   # a project keeps its base's variables
   # tiers of contents, outermost first: [ userland  <each base's packages>  <ours> ]
   tiers = (if baseEnv != null && baseEnv ? tiers then baseEnv.tiers else [ userland ]) ++ [ (packages pkgs) ];
   # layers: split off each tier's closure in turn (what earlier tiers hold stays in theirs), then lay
@@ -74,7 +77,8 @@ let
     contents = pkgs.lib.unique (builtins.concatLists tiers);
     layeringPipeline = [ (pipeline tiers) ];
     extraCommands = "mkdir -p -m 1777 tmp"
-      + pkgs.lib.optionalString (driver != null) "\nmkdir -p run && ln -s ${driver} run/opengl-driver";
+      + pkgs.lib.optionalString (driver != null) "\nmkdir -p run && ln -s ${driver} run/opengl-driver"
+      + pkgs.lib.optionalString useLoader "\nmkdir -p lib64 && ln -s ${pkgs.glibc}/lib/ld-linux-x86-64.so.2 lib64/ld-linux-x86-64.so.2";
     config.WorkingDir = "/work";
   };
 
@@ -92,7 +96,7 @@ let
 
   # Extra `-e NAME=value` flags for podman, from `env`.
   envFlags = pkgs.lib.concatStringsSep " "
-    (pkgs.lib.mapAttrsToList (k: v: "-e ${pkgs.lib.escapeShellArg "${k}=${v}"}") env);
+    (pkgs.lib.mapAttrsToList (k: v: "-e ${pkgs.lib.escapeShellArg "${k}=${v}"}") allEnv);
 
   run = pkgs.writeShellApplication {
     name = "toolbox-${name}";
@@ -187,6 +191,7 @@ in
 # alike by this shape — a decomp env and a container toolbox are just two runtimes.
 {
   inherit name image run resources base baseArgs tiers;
+  env = allEnv; loader = useLoader;
   devices = devs; gpuDriver = driver; inherit gitRemote;
   runtime = "container";
   shell = null;   # `nix develop` into a container isn't offered; use the FHS envs for that

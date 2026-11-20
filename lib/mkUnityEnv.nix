@@ -8,19 +8,24 @@
 #
 # It also carries Blender, headless, for the art half of a Unity project (model exports, checks, sheets).
 #
-# STAGE 1 PENDING (Thimble stage 1): the Editor is not in it yet and nothing of Unity is downloaded;
-# today the env is the .NET half only. `placeholder` says so (the NixOS module warns when the base is
-# enabled on its own). Stage 1 adds the Editor (plus `modules`) to `packages` below (or a `.run` of
-# its own if it must be an FHS env) and drops `placeholder`; version, modules and the bases wiring stay.
+# STAGE 1 (S1b): the Linux Editor at `version` is in the image, unpacked from Unity's tarball
+# (lib/unityEditor.nix, pinned by sha256, fetched at build time, unfree, never redistributed) with the
+# libraries it dlopens on a wrapper-local LD_LIBRARY_PATH. A rootless podman container cannot run
+# bwrap (buildFHSEnv), so the image gets the glibc loader at /lib64 instead (`loader`, see mkToolbox).
+# In the container: `Unity` (the Editor), `unity-fhs CMD...` (any glibc binary, e.g. the `unity` CLI
+# or the Licensing Client, with the same libraries and CA bundle), THIMBLE_UNITY = the Editor wrapper.
+# `modules` (build support) are not unpacked yet: S1 is -batchmode -nographics only.
 { pkgs, mkToolbox, toolsets }:
 
 let
+  unityEditor = import ./unityEditor.nix { inherit pkgs; };
   mk = spec@{
     version,                 # editor version, e.g. "6000.6.9f1"
     modules ? [ ],           # editor modules (build support), e.g. [ "linux-il2cpp" "webgl" ]
     resources ? { },         # default caps, as mkToolbox
   }:
   let
+    editor = unityEditor { inherit version; };
     tb = mkToolbox {
       name = "unity-${version}";
       inherit resources;
@@ -31,8 +36,11 @@ let
       # Blender (headless `blender -b`): art lanes run model exports, model checks and review-sheet
       # renders here instead of on a Mac. Rendering uses Eevee over EGL/Mesa where a GPU is passed in,
       # else Workbench or Cycles on the CPU. The Macs run Blender 5.3; keep this in step when bumping.
-      packages = p: toolsets.dotnet.packages p ++ [ p.blender ];   # stage 1: + the Editor at `version` with `modules`
+      packages = p: toolsets.dotnet.packages p ++ [ p.blender editor ]
+        ++ (with p; [ cacert cpio p7zip xz gnutar ]);   # cpio/7z/xz: unpacking Editor modules
+      loader = true;   # /lib64/ld-linux-x86-64.so.2, for the glibc-native Editor, Licensing Client and `unity` CLI
       env = {
+        THIMBLE_UNITY = editor.binary;   # tools/paths.py unity_editor()
         DOTNET_CLI_TELEMETRY_OPTOUT = "1";
         DOTNET_NOLOGO = "1";
         UNITY_VERSION = version;
@@ -42,8 +50,9 @@ let
   tb // {
     inherit version modules;
     devices = tb.devices; gpuDriver = tb.gpuDriver;
-    egress = toolsets.dotnet.egress;   # stage 1: + Unity's download hosts
-    placeholder = "the Unity Editor itself is not in it yet (Thimble stage 1); this is its .NET half";
+    # + Unity's hosts: the Editor tarball and modules, sign-in and the licence service
+    egress = toolsets.dotnet.egress ++ [ "download.unity3d.com" "unity.com" "unity3d.com" ];
+    inherit (tb) env loader;
     options = l: tb.options l // {
       version = l.mkOption {
         type = l.types.str; default = version;

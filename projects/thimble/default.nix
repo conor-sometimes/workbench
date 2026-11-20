@@ -16,7 +16,7 @@
 #
 # Unity itself (unity-check, unity-test, scenarios-mono: they need the Editor's compiler and its Mono)
 # comes from the `unity` base this project sits under (bases/default.nix), at Thimble's pinned editor
-# version: a placeholder until the Unity Linux Editor stage (stage 1) builds it. Host option:
+# version (Unity, unity-fhs and THIMBLE_UNITY come from it). Host option:
 # workbench.projects.unity.thimble.enable.
 { pkgs, lib, tools }:
 
